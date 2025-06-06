@@ -200,25 +200,23 @@ func helmChartFromSpecOrRef(
 		return helmChart, fmt.Errorf("failed to get HelmChart %s referenced by ServiceTemplate %s: %w", chartRef.String(), templateRef.String(), err)
 	}
 
-	repo := &sourcev1.HelmRepository{}
 	repoRef := client.ObjectKey{
 		// Using chart's namespace because it's source
 		// should be within the same namespace.
 		Namespace: chart.Namespace,
 		Name:      chart.Spec.SourceRef.Name,
 	}
-	if err := c.Get(ctx, repoRef, repo); err != nil {
-		return helmChart, fmt.Errorf("failed to get HelmRepository %s: %w", repoRef.String(), err)
-	}
 
+	var repoUrl string
+	var repoChartName string
+	var RegistryCredentialsConfig *sveltosv1beta1.RegistryCredentialsConfig
 	chartName := chart.Spec.Chart
-	helmChart = sveltosv1beta1.HelmChart{
-		Values:        svc.Values,
-		ValuesFrom:    svc.ValuesFrom,
-		RepositoryURL: repo.Spec.URL,
-		// We don't have repository name so chart name becomes repository name.
-		RepositoryName: chartName,
-		ChartName: func() string {
+
+	switch chart.Spec.SourceRef.Kind {
+	    case sourcev1.HelmRepositoryKind:
+	        repo := &sourcev1.HelmRepository{}
+	        repoUrl = repo.Spec.URL
+		repoChartName = func() string {
 			if repo.Spec.Type == utils.RegistryTypeOCI {
 				return chartName
 			}
@@ -226,7 +224,34 @@ func helmChartFromSpecOrRef(
 			// We don't have a repository name, so we can use <chart>/<chart> instead.
 			// See: https://projectsveltos.github.io/sveltos/addons/helm_charts/.
 			return fmt.Sprintf("%s/%s", chartName, chartName)
-		}(),
+		}()
+	        RegistryCredentialsConfig = generateRegistryCredentialsConfig(namespace, repo)
+		if err := c.Get(ctx, repoRef, repo); err != nil {
+		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
+		}
+	    case sourcev1.GitRepositoryKind:
+	        repo := &sourcev1.GitRepository{}
+	        repoUrl = repo.Spec.URL
+		// Sveltos accepts ChartName in <repository>/<chart> format for non-OCI.
+		// We don't have a repository name, so we can use <chart>/<chart> instead.
+		// See: https://projectsveltos.github.io/sveltos/addons/helm_charts/.
+		repoChartName = fmt.Sprintf("%s/%s", chartName, chartName)
+	        RegistryCredentialsConfig = generateGitRegistryCredentialsConfig(namespace, repo)
+		if err := c.Get(ctx, repoRef, repo); err != nil {
+		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
+		}
+	    default:
+	        return helmChart, fmt.Errorf("Unsupported HelmChart source kind %s", repoRef.String())
+	}
+
+	helmChart = sveltosv1beta1.HelmChart{
+		Values:        svc.Values,
+		ValuesFrom:    svc.ValuesFrom,
+		//RepositoryURL: repo.Spec.URL,
+		RepositoryURL: repoUrl,
+		// We don't have repository name so chart name becomes repository name.
+		RepositoryName: chartName,
+		ChartName: repoChartName,
 		ChartVersion: chart.Spec.Version,
 		ReleaseName:  svc.Name,
 		ReleaseNamespace: func() string {
@@ -235,7 +260,8 @@ func helmChartFromSpecOrRef(
 			}
 			return svc.Name
 		}(),
-		RegistryCredentialsConfig: generateRegistryCredentialsConfig(namespace, repo),
+		//RegistryCredentialsConfig: generateRegistryCredentialsConfig(namespace, repo),
+		RegistryCredentialsConfig: RegistryCredentialsConfig,
 	}
 
 	return helmChart, nil
@@ -269,6 +295,30 @@ func generateRegistryCredentialsConfig(namespace string, repo *sourcev1.HelmRepo
 
 	return c
 }
+
+
+func generateGitRegistryCredentialsConfig(namespace string, repo *sourcev1.GitRepository) *sveltosv1beta1.RegistryCredentialsConfig {
+	if repo == nil || repo.Spec.SecretRef == nil {
+		return nil
+	}
+
+	c := new(sveltosv1beta1.RegistryCredentialsConfig)
+
+	// The reason it is passed to PlainHTTP instead of InsecureSkipTLSVerify is because
+	// the source.Spec.Insecure field is meant to be used for connecting to repositories
+	// over plain HTTP, which is different than what InsecureSkipTLSVerify is meant for.
+	// See: https://github.com/fluxcd/source-controller/pull/1288
+
+	if repo.Spec.SecretRef != nil {
+		c.CredentialsSecretRef = &corev1.SecretReference{
+			Name:      repo.Spec.SecretRef.Name,
+			Namespace: namespace,
+		}
+	}
+
+	return c
+}
+
 
 func helmChartFromFluxSource(
 	_ context.Context,
