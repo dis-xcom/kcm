@@ -147,7 +147,7 @@ jobs:
     permissions:
       packages: write
     env:
-      REGISTRY_REPO: oci://ghcr.io/k0rdent/kcm/charts-ci
+      REGISTRY_REPO: oci://ghcr.io/dis-xcom/kcm/charts-ci
     steps:
       - name: Checkout repository
         if: ${{ needs.authorize.outputs.public_repo == 'true' }}
@@ -173,11 +173,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           build-args: |
-            LD_FLAGS=-s -w -X github.com/K0rdent/kcm/internal/build.Version=${{ needs.lint-test.outputs.version }}
+            LD_FLAGS=-s -w -X github.com/dis-xcom/kcm/internal/build.Version=${{ needs.lint-test.outputs.version }}
           context: .
           platforms: linux/amd64
           tags: |
-            ghcr.io/k0rdent/kcm/controller-ci:${{ needs.lint-test.outputs.version }}
+            ghcr.io/dis-xcom/kcm/controller-ci:${{ needs.lint-test.outputs.version }}
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -217,8 +217,8 @@ jobs:
       - name: Set public registry env variables
         if: ${{ env.PUBLIC_REPO == 'true' }}
         run: |
-          echo "REGISTRY_REPO=oci://ghcr.io/k0rdent/kcm/charts-ci" >> $GITHUB_ENV
-          echo "IMG=ghcr.io/k0rdent/kcm/controller-ci:${{ needs.lint-test.outputs.version }}" >> $GITHUB_ENV
+          echo "REGISTRY_REPO=oci://ghcr.io/dis-xcom/kcm/charts-ci" >> $GITHUB_ENV
+          echo "IMG=ghcr.io/dis-xcom/kcm/controller-ci:${{ needs.lint-test.outputs.version }}" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -286,8 +286,8 @@ jobs:
       - name: Set public registry env variables
         if: ${{ env.PUBLIC_REPO == 'true' }}
         run: |
-          echo "REGISTRY_REPO=oci://ghcr.io/k0rdent/kcm/charts-ci" >> $GITHUB_ENV
-          echo "IMG=ghcr.io/k0rdent/kcm/controller-ci:${{ needs.lint-test.outputs.version }}" >> $GITHUB_ENV
+          echo "REGISTRY_REPO=oci://ghcr.io/dis-xcom/kcm/charts-ci" >> $GITHUB_ENV
+          echo "IMG=ghcr.io/dis-xcom/kcm/controller-ci:${{ needs.lint-test.outputs.version }}" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v4

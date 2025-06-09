@@ -14,4 +14,4 @@
 
 package build
 
-var Version string
+var Version string = "1.0.99"

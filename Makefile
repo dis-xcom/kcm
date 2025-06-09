@@ -9,7 +9,7 @@ IMG_TAG = $(shell echo $(IMG) | cut -d: -f2)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.32.0
 
-KCM_STABLE_VERSION = $(shell git ls-remote --tags --sort v:refname --exit-code --refs https://github.com/k0rdent/kcm | grep -v -e "-rc[0-9]\+$$" | tail -n1 | cut -d '/' -f3)
+KCM_STABLE_VERSION = $(shell git ls-remote --tags --sort v:refname --exit-code --refs https://github.com/dis-xcom/kcm | grep -v -e "-rc[0-9]\+$$" | tail -n1 | cut -d '/' -f3)
 
 HOSTOS := $(shell go env GOHOSTOS)
 HOSTARCH := $(shell go env GOHOSTARCH)
@@ -190,8 +190,8 @@ lint-chart-%:
 ##@ Build
 
 LD_FLAGS?= -s -w
-LD_FLAGS += -X github.com/K0rdent/kcm/internal/build.Version=$(VERSION)
-LD_FLAGS += -X github.com/K0rdent/kcm/internal/telemetry.segmentToken=$(SEGMENT_TOKEN)
+LD_FLAGS += -X github.com/dis-xcom/kcm/internal/build.Version=$(VERSION)
+LD_FLAGS += -X github.com/dis-xcom/kcm/internal/telemetry.segmentToken=$(SEGMENT_TOKEN)
 
 .PHONY: build
 build: generate-all ## Build manager binary.
@@ -351,7 +351,7 @@ dev-push: docker-build helm-push
 dev-templates: templates-generate
 	$(KUBECTL) -n $(NAMESPACE) apply --force -f $(PROVIDER_TEMPLATES_DIR)/kcm-templates/files/templates
 
-KCM_REPO_URL ?= oci://ghcr.io/k0rdent/kcm/charts
+KCM_REPO_URL ?= oci://ghcr.io/dis-xcom/kcm/charts
 KCM_REPO_NAME ?= kcm
 
 .PHONY: stable-templates
@@ -366,7 +366,7 @@ stable-templates: yq
 		"spec:" \
 		"  type: oci" \
 		"  url: $(KCM_REPO_URL)" | $(KUBECTL) -n $(NAMESPACE) create -f -
-	@curl -s "https://api.github.com/repos/k0rdent/kcm/contents/templates/provider/kcm-templates/files/templates?ref=$(KCM_STABLE_VERSION)" | \
+	@curl -s "https://api.github.com/repos/dis-xcom/kcm/contents/templates/provider/kcm-templates/files/templates?ref=$(KCM_STABLE_VERSION)" | \
 	jq -r '.[].download_url' | while read url; do \
 		curl -s "$$url" | \
 		$(YQ) '.spec.helm.chartSpec.sourceRef.name = "$(KCM_REPO_NAME)"' | \
