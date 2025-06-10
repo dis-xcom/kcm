@@ -23,11 +23,13 @@ import (
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	sveltosv1beta1 "github.com/projectsveltos/addon-controller/api/v1beta1"
 	libsveltosv1beta1 "github.com/projectsveltos/libsveltos/api/v1beta1"
+	fluxcdmeta "github.com/fluxcd/pkg/apis/meta"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"github.com/Masterminds/semver/v3"
 
 	kcm "github.com/K0rdent/kcm/api/v1beta1"
 	"github.com/K0rdent/kcm/internal/utils"
@@ -189,9 +191,6 @@ func helmChartFromSpecOrRef(
 	if template.GetCommonStatus() == nil || template.GetCommonStatus().ChartRef == nil {
 		return helmChart, fmt.Errorf("status for ServiceTemplate %s/%s has not been updated yet", template.Namespace, template.Name)
 	}
-
-        l := ctrl.LoggerFrom(ctx)
-
 	templateRef := client.ObjectKeyFromObject(template)
 	chart := &sourcev1.HelmChart{}
 	chartRef := client.ObjectKey{
@@ -200,6 +199,22 @@ func helmChartFromSpecOrRef(
 	}
 	if err := c.Get(ctx, chartRef, chart); err != nil {
 		return helmChart, fmt.Errorf("failed to get HelmChart %s referenced by ServiceTemplate %s: %w", chartRef.String(), templateRef.String(), err)
+	}
+
+	chartVersion := ""
+	if chart.Status.Artifact != nil && chart.Status.Artifact.Revision != "" {
+	    if _, err := semver.NewVersion(chart.Status.Artifact.Revision); err == nil {
+		// Try to get the HelmChart version from status.artifact.revision
+		// It contains the valid chart version for charts from a GitRepository
+		chartVersion = chart.Status.Artifact.Revision
+	    } else {
+		// Fallback to HelmChart version from spec.version if has the valid format
+		_, err := semver.NewVersion(chart.Spec.Version)
+		if err != nil {
+		    return helmChart, fmt.Errorf("failed to determine version of HelmChart %s referenced by ServiceTemplate %s: %w", chartRef.String(), templateRef.String(), err)
+		}
+		chartVersion = chart.Spec.Version
+	    }
 	}
 
 	repoRef := client.ObjectKey{
@@ -214,18 +229,13 @@ func helmChartFromSpecOrRef(
 	var RegistryCredentialsConfig *sveltosv1beta1.RegistryCredentialsConfig
 	chartName := chart.Spec.Chart
 
-
-	l.Info("======== ENTERING SWITCH")
-
 	switch chart.Spec.SourceRef.Kind {
 	    case sourcev1.HelmRepositoryKind:
-	        l.Info("======== CASE: sourcev1.HelmRepositoryKind")
 	        repo := &sourcev1.HelmRepository{}
 		if err := c.Get(ctx, repoRef, repo); err != nil {
 		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
 		}
 	        repoUrl = repo.Spec.URL
-	        l.Info(fmt.Sprintf("======== REPO URL: %s", repoUrl))
 		repoChartName = func() string {
 			if repo.Spec.Type == utils.RegistryTypeOCI {
 				return chartName
@@ -235,35 +245,30 @@ func helmChartFromSpecOrRef(
 			// See: https://projectsveltos.github.io/sveltos/addons/helm_charts/.
 			return fmt.Sprintf("%s/%s", chartName, chartName)
 		}()
-	        RegistryCredentialsConfig = generateRegistryCredentialsConfig(namespace, repo)
+	        RegistryCredentialsConfig = generateRegistryCredentialsConfig(namespace, repo.Spec.Insecure, repo.Spec.SecretRef)
 	    case sourcev1.GitRepositoryKind:
-	        l.Info("======== CASE: sourcev1.GitRepositoryKind")
 	        repo := &sourcev1.GitRepository{}
 		if err := c.Get(ctx, repoRef, repo); err != nil {
 		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
 		}
-		repoUrl = repo.Spec.URL
-	        l.Info(fmt.Sprintf("======== REPO URL: %s", repoUrl))
+		repoUrl = fmt.Sprintf("gitrepository://%s/%s/%s", chart.Namespace, chart.Spec.SourceRef.Name, chartName)
 		// Sveltos accepts ChartName in <repository>/<chart> format for non-OCI.
 		// We don't have a repository name, so we can use <chart>/<chart> instead.
 		// See: https://projectsveltos.github.io/sveltos/addons/helm_charts/.
-		repoChartName = fmt.Sprintf("%s/%s", chartName, chartName)
-	        RegistryCredentialsConfig = generateGitRegistryCredentialsConfig(namespace, repo)
+		repoChartName = chartName
+	        RegistryCredentialsConfig = generateRegistryCredentialsConfig(namespace, false, repo.Spec.SecretRef)
 	    default:
-	        l.Info("======== CASE: DEFAULT")
 	        return helmChart, fmt.Errorf("Unsupported HelmChart source kind %s", repoRef.String())
 	}
-	l.Info(fmt.Sprintf("======== RESULTING REPO URL: %s", repoUrl))
 
 	helmChart = sveltosv1beta1.HelmChart{
 		Values:        svc.Values,
 		ValuesFrom:    svc.ValuesFrom,
-		//RepositoryURL: repo.Spec.URL,
 		RepositoryURL: repoUrl,
 		// We don't have repository name so chart name becomes repository name.
 		RepositoryName: chartName,
 		ChartName: repoChartName,
-		ChartVersion: chart.Spec.Version,
+		ChartVersion: chartVersion,
 		ReleaseName:  svc.Name,
 		ReleaseNamespace: func() string {
 			if svc.Namespace != "" {
@@ -271,15 +276,13 @@ func helmChartFromSpecOrRef(
 			}
 			return svc.Name
 		}(),
-		//RegistryCredentialsConfig: generateRegistryCredentialsConfig(namespace, repo),
 		RegistryCredentialsConfig: RegistryCredentialsConfig,
 	}
-
 	return helmChart, nil
 }
 
-func generateRegistryCredentialsConfig(namespace string, repo *sourcev1.HelmRepository) *sveltosv1beta1.RegistryCredentialsConfig {
-	if repo == nil || (!repo.Spec.Insecure && repo.Spec.SecretRef == nil) {
+func generateRegistryCredentialsConfig(namespace string, insecure bool, secretRef *fluxcdmeta.LocalObjectReference) *sveltosv1beta1.RegistryCredentialsConfig {
+	if !insecure && secretRef == nil {
 		return nil
 	}
 
@@ -289,7 +292,7 @@ func generateRegistryCredentialsConfig(namespace string, repo *sourcev1.HelmRepo
 	// the source.Spec.Insecure field is meant to be used for connecting to repositories
 	// over plain HTTP, which is different than what InsecureSkipTLSVerify is meant for.
 	// See: https://github.com/fluxcd/source-controller/pull/1288
-	c.PlainHTTP = repo.Spec.Insecure
+	c.PlainHTTP = insecure
 	if c.PlainHTTP {
 		// InsecureSkipTLSVerify is redundant in this case.
 		// At the time of implementation, Sveltos would return an error when PlainHTTP
@@ -297,39 +300,15 @@ func generateRegistryCredentialsConfig(namespace string, repo *sourcev1.HelmRepo
 		c.InsecureSkipTLSVerify = false
 	}
 
-	if repo.Spec.SecretRef != nil {
+	if secretRef != nil {
 		c.CredentialsSecretRef = &corev1.SecretReference{
-			Name:      repo.Spec.SecretRef.Name,
+			Name:      secretRef.Name,
 			Namespace: namespace,
 		}
 	}
 
 	return c
 }
-
-
-func generateGitRegistryCredentialsConfig(namespace string, repo *sourcev1.GitRepository) *sveltosv1beta1.RegistryCredentialsConfig {
-	if repo == nil || repo.Spec.SecretRef == nil {
-		return nil
-	}
-
-	c := new(sveltosv1beta1.RegistryCredentialsConfig)
-
-	// The reason it is passed to PlainHTTP instead of InsecureSkipTLSVerify is because
-	// the source.Spec.Insecure field is meant to be used for connecting to repositories
-	// over plain HTTP, which is different than what InsecureSkipTLSVerify is meant for.
-	// See: https://github.com/fluxcd/source-controller/pull/1288
-
-	if repo.Spec.SecretRef != nil {
-		c.CredentialsSecretRef = &corev1.SecretReference{
-			Name:      repo.Spec.SecretRef.Name,
-			Namespace: namespace,
-		}
-	}
-
-	return c
-}
-
 
 func helmChartFromFluxSource(
 	_ context.Context,

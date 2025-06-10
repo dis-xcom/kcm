@@ -56,8 +56,14 @@ func Test_emptyRegistryCredentialsConfig(t *testing.T) {
 		{tcName: "nil repo", repo: nil},
 		{tcName: "empty repo", repo: &sourcev1.HelmRepository{}},
 	} {
+		var insecure bool
+		var secretRef *fluxcdmeta.LocalObjectReference
+		if tc.repo != nil {
+		    insecure = tc.repo.Spec.Insecure
+		    secretRef = tc.repo.Spec.SecretRef
+		}
 		t.Run(tc.tcName, func(t *testing.T) {
-			config := generateRegistryCredentialsConfig(testNamespace, tc.repo)
+			config := generateRegistryCredentialsConfig(testNamespace, insecure, secretRef)
 			require.Nil(t, config)
 		})
 	}
@@ -84,7 +90,7 @@ func Test_nonEmptyRegistryCredentialsConfig(t *testing.T) {
 		}}},
 	} {
 		t.Run(tc.tcName, func(t *testing.T) {
-			config := generateRegistryCredentialsConfig(testNamespace, tc.repo)
+			config := generateRegistryCredentialsConfig(testNamespace, tc.repo.Spec.Insecure, tc.repo.Spec.SecretRef)
 			require.NotNil(t, config)
 			require.Equal(t, tc.repo.Spec.Insecure, config.PlainHTTP)
 
