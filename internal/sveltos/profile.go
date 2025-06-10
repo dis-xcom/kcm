@@ -215,6 +215,9 @@ func helmChartFromSpecOrRef(
 	switch chart.Spec.SourceRef.Kind {
 	    case sourcev1.HelmRepositoryKind:
 	        repo := &sourcev1.HelmRepository{}
+		if err := c.Get(ctx, repoRef, repo); err != nil {
+		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
+		}
 	        repoUrl = repo.Spec.URL
 		repoChartName = func() string {
 			if repo.Spec.Type == utils.RegistryTypeOCI {
@@ -226,20 +229,17 @@ func helmChartFromSpecOrRef(
 			return fmt.Sprintf("%s/%s", chartName, chartName)
 		}()
 	        RegistryCredentialsConfig = generateRegistryCredentialsConfig(namespace, repo)
+	    case sourcev1.GitRepositoryKind:
+	        repo := &sourcev1.GitRepository{}
 		if err := c.Get(ctx, repoRef, repo); err != nil {
 		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
 		}
-	    case sourcev1.GitRepositoryKind:
-	        repo := &sourcev1.GitRepository{}
-	        repoUrl = repo.Spec.URL
+		repoUrl = repo.Spec.URL
 		// Sveltos accepts ChartName in <repository>/<chart> format for non-OCI.
 		// We don't have a repository name, so we can use <chart>/<chart> instead.
 		// See: https://projectsveltos.github.io/sveltos/addons/helm_charts/.
 		repoChartName = fmt.Sprintf("%s/%s", chartName, chartName)
 	        RegistryCredentialsConfig = generateGitRegistryCredentialsConfig(namespace, repo)
-		if err := c.Get(ctx, repoRef, repo); err != nil {
-		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
-		}
 	    default:
 	        return helmChart, fmt.Errorf("Unsupported HelmChart source kind %s", repoRef.String())
 	}
