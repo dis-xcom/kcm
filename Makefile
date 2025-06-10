@@ -190,8 +190,8 @@ lint-chart-%:
 ##@ Build
 
 LD_FLAGS?= -s -w
-LD_FLAGS += -X github.com/dis-xcom/kcm/internal/build.Version=$(VERSION)
-LD_FLAGS += -X github.com/dis-xcom/kcm/internal/telemetry.segmentToken=$(SEGMENT_TOKEN)
+LD_FLAGS += -X github.com/K0rdent/kcm/internal/build.Version=$(VERSION)
+LD_FLAGS += -X github.com/K0rdent/kcm/internal/telemetry.segmentToken=$(SEGMENT_TOKEN)
 
 .PHONY: build
 build: generate-all ## Build manager binary.

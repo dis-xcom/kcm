@@ -123,7 +123,7 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&templatesRepoURL, "templates-repo-url", "oci://ghcr.io/dis-xcom/kcm/charts",
+	flag.StringVar(&templatesRepoURL, "templates-repo-url", "oci://ghcr.io/dis-xcom/kcm/charts-ci",
 		"The default repo URL to download provider and cluster templates (charts) from, prefix with oci:// for OCI registries.")
 	flag.StringVar(&globalRegistry, "global-registry", "",
 		"Global registry which will be passed as global.registry value for all providers and ClusterDeployments")

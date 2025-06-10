@@ -11,7 +11,7 @@ admissionWebhook:
   certDir: "/tmp/k8s-webhook-server/serving-certs/"
 
 controller:
-  templatesRepoURL: "oci://ghcr.io/dis-xcom/kcm/charts"
+  templatesRepoURL: "oci://ghcr.io/dis-xcom/kcm/charts-ci"
   globalRegistry: ""
   globalK0sURL: ""
   registryCredsSecret: ""
@@ -43,7 +43,7 @@ containerSecurityContext:
       - ALL
 
 image:
-  repository: ghcr.io/dis-xcom/kcm/controller
+  repository: ghcr.io/dis-xcom/kcm/controller-ci
   tag: latest
   pullPolicy: IfNotPresent
 
