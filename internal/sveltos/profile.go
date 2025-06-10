@@ -190,6 +190,8 @@ func helmChartFromSpecOrRef(
 		return helmChart, fmt.Errorf("status for ServiceTemplate %s/%s has not been updated yet", template.Namespace, template.Name)
 	}
 
+        l := ctrl.LoggerFrom(ctx)
+
 	templateRef := client.ObjectKeyFromObject(template)
 	chart := &sourcev1.HelmChart{}
 	chartRef := client.ObjectKey{
@@ -212,13 +214,18 @@ func helmChartFromSpecOrRef(
 	var RegistryCredentialsConfig *sveltosv1beta1.RegistryCredentialsConfig
 	chartName := chart.Spec.Chart
 
+
+	l.Info("======== ENTERING SWITCH")
+
 	switch chart.Spec.SourceRef.Kind {
 	    case sourcev1.HelmRepositoryKind:
+	        l.Info("======== CASE: sourcev1.HelmRepositoryKind")
 	        repo := &sourcev1.HelmRepository{}
 		if err := c.Get(ctx, repoRef, repo); err != nil {
 		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
 		}
 	        repoUrl = repo.Spec.URL
+	        l.Info(fmt.Sprintf("======== REPO URL: %s", repoUrl))
 		repoChartName = func() string {
 			if repo.Spec.Type == utils.RegistryTypeOCI {
 				return chartName
@@ -230,19 +237,23 @@ func helmChartFromSpecOrRef(
 		}()
 	        RegistryCredentialsConfig = generateRegistryCredentialsConfig(namespace, repo)
 	    case sourcev1.GitRepositoryKind:
+	        l.Info("======== CASE: sourcev1.GitRepositoryKind")
 	        repo := &sourcev1.GitRepository{}
 		if err := c.Get(ctx, repoRef, repo); err != nil {
 		    return helmChart, fmt.Errorf("failed to get %s: %w", repoRef.String(), err)
 		}
 		repoUrl = repo.Spec.URL
+	        l.Info(fmt.Sprintf("======== REPO URL: %s", repoUrl))
 		// Sveltos accepts ChartName in <repository>/<chart> format for non-OCI.
 		// We don't have a repository name, so we can use <chart>/<chart> instead.
 		// See: https://projectsveltos.github.io/sveltos/addons/helm_charts/.
 		repoChartName = fmt.Sprintf("%s/%s", chartName, chartName)
 	        RegistryCredentialsConfig = generateGitRegistryCredentialsConfig(namespace, repo)
 	    default:
+	        l.Info("======== CASE: DEFAULT")
 	        return helmChart, fmt.Errorf("Unsupported HelmChart source kind %s", repoRef.String())
 	}
+	l.Info(fmt.Sprintf("======== RESULTING REPO URL: %s", repoUrl))
 
 	helmChart = sveltosv1beta1.HelmChart{
 		Values:        svc.Values,
